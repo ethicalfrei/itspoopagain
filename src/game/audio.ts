@@ -12,13 +12,13 @@ let musicOn = false;
 let activeLine: Howl | null = null;
 
 const LINES = {
-  poop: "/audio/clips/11-its-poop-again.mp3",
-  called: "/audio/clips/12-he-called-the-shit-poop.mp3",
-  best: "/audio/clips/13-this-is-the-best-night-of-my-life.mp3",
-  kids: "/audio/clips/14-ill-get-you-damn-kids-for-this.mp3",
-  die: "/audio/clips/15-youre-all-gonna-die.mp3",
-  hell: "/audio/clips/06-who-the-hell-is-it-what-do-you-want.mp3",
-  stomp: "/audio/clips/10-call-the-fire-department-outta-control.mp3",
+  poop: "/audio/clips/11-its-poop-again.mp3?v=clean1",
+  called: "/audio/clips/12-he-called-the-shit-poop.mp3?v=clean1",
+  best: "/audio/clips/13-this-is-the-best-night-of-my-life.mp3?v=clean1",
+  kids: "/audio/clips/16-ill-get-you-damn-kids-youre-all-gonna-die.mp3?v=clean1",
+  die: "/audio/clips/15-youre-all-gonna-die.mp3?v=clean1",
+  hell: "/audio/clips/06-who-the-hell-is-it-what-do-you-want.mp3?v=clean1",
+  stomp: "/audio/clips/10-call-the-fire-department-outta-control.mp3?v=clean1",
 } as const;
 
 function ensure() {
@@ -190,7 +190,7 @@ export function startMusic() {
   musicOn = true;
   if (!musicHowl) {
     musicHowl = new Howl({
-      src: ["/audio/music/its-poop-again.mp3?v=quirk1"],
+      src: ["/audio/music/its-poop-again.mp3?v=clean1"],
       loop: true,
       volume: 0.55,
       html5: true,
