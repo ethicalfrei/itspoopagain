@@ -1,12 +1,25 @@
-/* Tiny chiptune + SFX mixer. Unlock on first gesture. */
+/* Music bed + porch lines. Beep SFX stay for hits; voice lines always play to the end. */
+
+import { Howl, Howler } from "howler";
 
 type Bus = { master: GainNode; music: GainNode; sfx: GainNode };
 
 let ctx: AudioContext | null = null;
 let bus: Bus | null = null;
-let musicTimer: number | null = null;
-let musicOn = false;
 let unlocked = false;
+let musicHowl: Howl | null = null;
+let musicOn = false;
+let activeLine: Howl | null = null;
+
+const LINES = {
+  poop: "/audio/clips/11-its-poop-again.mp3",
+  called: "/audio/clips/12-he-called-the-shit-poop.mp3",
+  best: "/audio/clips/13-this-is-the-best-night-of-my-life.mp3",
+  kids: "/audio/clips/14-ill-get-you-damn-kids-for-this.mp3",
+  die: "/audio/clips/15-youre-all-gonna-die.mp3",
+  hell: "/audio/clips/06-who-the-hell-is-it-what-do-you-want.mp3",
+  stomp: "/audio/clips/10-call-the-fire-department-outta-control.mp3",
+} as const;
 
 function ensure() {
   if (ctx) return ctx;
@@ -28,12 +41,14 @@ function ensure() {
 export function unlockAudio() {
   const c = ensure();
   if (c.state === "suspended") void c.resume();
+  if (Howler.ctx && Howler.ctx.state === "suspended") void Howler.ctx.resume();
   unlocked = true;
 }
 
 export function setMute(m: boolean) {
   if (!bus || !ctx) return;
   bus.master.gain.setTargetAtTime(m ? 0 : 0.9, ctx.currentTime, 0.02);
+  Howler.volume(m ? 0 : 1);
 }
 
 function envGain(dest: AudioNode, attack = 0.005, hold = 0.05, release = 0.08) {
@@ -78,6 +93,33 @@ function noise(dur: number, dest: AudioNode, hp = 400) {
   n.stop(stopAt);
 }
 
+function duckMusic(on: boolean) {
+  if (!musicHowl) return;
+  musicHowl.fade(musicHowl.volume(), on ? 0.12 : 0.55, on ? 80 : 400);
+}
+
+/** Play a porch line all the way through. Never chops a line that's already talking. */
+export function playLine(src: string) {
+  unlockAudio();
+  if (activeLine?.playing()) return;
+  const howl = new Howl({
+    src: [src],
+    html5: true,
+    volume: 0.95,
+    preload: true,
+  });
+  activeLine = howl;
+  duckMusic(true);
+  howl.once("end", () => {
+    if (activeLine === howl) {
+      activeLine = null;
+      duckMusic(false);
+    }
+    howl.unload();
+  });
+  howl.play();
+}
+
 export const sfx = {
   coin() {
     if (!bus) return;
@@ -98,6 +140,7 @@ export const sfx = {
     if (!bus) return;
     beep(1244, "sine", 0.18, bus.sfx);
     beep(1661, "sine", 0.22, bus.sfx);
+    playLine(LINES.hell);
   },
   fire() {
     if (!bus) return;
@@ -108,11 +151,12 @@ export const sfx = {
     if (!bus) return;
     beep(70, "square", 0.16, bus.sfx, 40);
     noise(0.18, bus.sfx, 80);
+    playLine(LINES.stomp);
   },
   yell() {
     if (!bus) return;
-    beep(320, "sawtooth", 0.35, bus.sfx, 180);
-    noise(0.3, bus.sfx, 300);
+    beep(320, "sawtooth", 0.18, bus.sfx, 180);
+    playLine(LINES.die);
   },
   bag() {
     if (!bus) return;
@@ -134,89 +178,34 @@ export const sfx = {
     beep(784, "square", 0.1, bus.sfx);
   },
   win() {
-    if (!bus) return;
-    [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => bus && beep(f, "square", 0.12, bus.sfx), i * 90));
+    playLine(LINES.poop);
   },
   lose() {
-    if (!bus) return;
-    beep(196, "square", 0.3, bus.sfx, 80);
+    playLine(LINES.kids);
   },
 };
 
-const TUNE: Array<[number, number]> = [
-  [0, 196],
-  [0.25, 233],
-  [0.5, 262],
-  [0.75, 311],
-  [1.0, 262],
-  [1.25, 233],
-  [1.5, 196],
-  [1.75, 175],
-  [2.0, 196],
-  [2.25, 262],
-  [2.5, 311],
-  [2.75, 349],
-  [3.0, 311],
-  [3.25, 262],
-  [3.5, 233],
-  [3.75, 196],
-  [4.0, 155],
-  [4.5, 175],
-  [5.0, 196],
-  [5.5, 233],
-  [6.0, 196],
-  [6.5, 175],
-  [7.0, 155],
-  [7.5, 131],
-];
-
 export function startMusic() {
-  const c = ensure();
-  if (c.state === "suspended") void c.resume();
+  unlockAudio();
   musicOn = true;
-  if (musicTimer != null) return;
-  const loop = () => {
-    if (!musicOn || !bus) return;
-    const t0 = c.currentTime;
-    for (const [when, freq] of TUNE) {
-      const o = c.createOscillator();
-      o.type = "square";
-      o.frequency.value = freq;
-      const g = c.createGain();
-      g.gain.value = 0;
-      o.connect(g);
-      g.connect(bus.music);
-      const t = t0 + when;
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.18, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-      o.start(t);
-      o.stop(t + 0.24);
-    }
-    // bass
-    for (let i = 0; i < 8; i++) {
-      const o = c.createOscillator();
-      o.type = "triangle";
-      o.frequency.value = i % 2 === 0 ? 98 : 87;
-      const g = c.createGain();
-      g.gain.value = 0.12;
-      o.connect(g);
-      g.connect(bus.music);
-      const t = t0 + i;
-      o.start(t);
-      o.stop(t + 0.4);
-    }
-    musicTimer = window.setTimeout(loop, 8000);
-  };
-  loop();
+  if (!musicHowl) {
+    musicHowl = new Howl({
+      src: ["/audio/music/its-poop-again.mp3"],
+      loop: true,
+      volume: 0.55,
+      html5: true,
+      preload: true,
+    });
+  }
+  if (!musicHowl.playing()) musicHowl.play();
 }
 
 export function stopMusic() {
   musicOn = false;
-  if (musicTimer != null) {
-    clearTimeout(musicTimer);
-    musicTimer = null;
-  }
+  musicHowl?.fade(musicHowl.volume(), 0, 300);
+  setTimeout(() => {
+    if (!musicOn) musicHowl?.pause();
+  }, 320);
 }
 
 export function isUnlocked() {
