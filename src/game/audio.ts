@@ -190,7 +190,7 @@ export function startMusic() {
   musicOn = true;
   if (!musicHowl) {
     musicHowl = new Howl({
-      src: ["/audio/music/its-poop-again.mp3"],
+      src: ["/audio/music/its-poop-again.mp3?v=quirk1"],
       loop: true,
       volume: 0.55,
       html5: true,
