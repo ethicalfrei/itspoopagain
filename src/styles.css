@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #070b14;
+  --color-surface: #12182a;
+  --color-fg: #f4e4c1;
+  --color-muted: #8b7d6a;
+  --color-primary: #ff6a00;
+  --color-accent: #3ec6ff;
+  --color-danger: #e23b3b;
+  --color-border: #2a2030;
+  --font-arcade: "Press Start 2P", ui-monospace, monospace;
+  --font-display: "VT323", ui-monospace, monospace;
+  --font-sans: "VT323", ui-monospace, monospace;
+  --radius: 0.25rem;
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+    background: var(--color-bg);
+    color: var(--color-fg);
+    overflow: hidden;
+  }
+
+  html,
+  body {
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input,
+  textarea {
+    touch-action: manipulation;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+}
