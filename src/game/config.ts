@@ -9,6 +9,7 @@ export const WALK_BOT = 252;
 export const CHAR_DISPLAY = 118;
 export const BOSS_DISPLAY = 132;
 export const TICK = 1 / 60;
+export const BAG_SLOTS = 1;
 
 export type CharId = "billy" | "frank" | "jack";
 export type OwnerId = "clemens" | "neighbor" | "veronica" | "danny";

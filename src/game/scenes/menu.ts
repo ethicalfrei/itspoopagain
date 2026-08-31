@@ -162,7 +162,7 @@ export class AttractScene extends Phaser.Scene {
     });
 
     this.add
-      .text(W / 2, 222, "FILL  ·  PLANT  ·  LIGHT  ·  RING  ·  RUN", {
+      .text(W / 2, 222, "FILL  ·  THROW  ·  PLANT  ·  LIGHT  ·  RING", {
         fontFamily: FONT,
         fontSize: "6px",
         color: "#8b7d6a",

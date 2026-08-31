@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import {
+  BAG_SLOTS,
   BOSS_DISPLAY,
   CHARACTERS,
   GROUND_Y,
@@ -90,6 +91,7 @@ type Shot = {
   vy: number;
   life: number;
   dmg: number;
+  friendly: boolean;
 };
 
 const FONT = '"Press Start 2P", monospace';
@@ -115,6 +117,7 @@ export class PlayScene extends Phaser.Scene {
   hudCombo!: Phaser.GameObjects.Text;
   hudHint!: Phaser.GameObjects.Text;
   hpBars: Phaser.GameObjects.Rectangle[] = [];
+  hudBags: Phaser.GameObjects.Sprite[] = [];
   fillBar!: Phaser.GameObjects.Rectangle;
   marker!: Phaser.GameObjects.Text;
   overlay?: Phaser.GameObjects.Container;
@@ -175,6 +178,7 @@ export class PlayScene extends Phaser.Scene {
     this.inputAcc = 0;
     this.staging = false;
     this.hpBars = [];
+    this.hudBags = [];
     this.overlay = undefined;
     this.howto = undefined;
   }
@@ -370,11 +374,18 @@ export class PlayScene extends Phaser.Scene {
       this.add.rectangle(x + 22, 24, 72, 5, 0x2a2030).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2001);
       const hp = this.add.rectangle(x + 22, 24, 72, 5, 0xe23b3b).setOrigin(0, 0.5).setScrollFactor(0).setDepth(2002);
       this.hpBars.push(hp);
+      const bagHud = this.add
+        .sprite(x + 100, 24, "bag", 0)
+        .setDisplaySize(12, 14)
+        .setScrollFactor(0)
+        .setDepth(2002)
+        .setAlpha(0.28);
+      this.hudBags.push(bagHud);
     });
 
     this.add.rectangle(W / 2, H - 11, W, 22, 0x070b14, 0.72).setScrollFactor(0).setDepth(2000);
     this.hudHint = this.add
-      .text(W / 2, H - 11, "PRESS ACTION AT THE BUSH  TO FILL A BAG", {
+      .text(W / 2, H - 11, "BUSH TO FILL  ·  PORCH TO PLANT  ·  ACTION TO THROW", {
         fontFamily: FONT,
         fontSize: "6px",
         color: "#ffd27a",
@@ -406,10 +417,10 @@ export class PlayScene extends Phaser.Scene {
     const c = this.add.container(W / 2, 86).setScrollFactor(0).setDepth(1800);
     c.add(this.add.rectangle(0, 0, 360, 92, 0x070b14, 0.86).setStrokeStyle(2, 0xff6a00));
     c.add(this.add.text(0, -34, "RING & RUN", { fontFamily: FONT, fontSize: "10px", color: "#ff6a00" }).setOrigin(0.5));
-    c.add(this.add.text(0, -14, "1. PRESS ACTION AT THE BUSH", { fontFamily: FONT, fontSize: "6px", color: "#f4e4c1" }).setOrigin(0.5));
-    c.add(this.add.text(0, 2, "2. DROP THE BAG ON THE PORCH", { fontFamily: FONT, fontSize: "6px", color: "#f4e4c1" }).setOrigin(0.5));
+    c.add(this.add.text(0, -14, "1. ACTION AT A BUSH  ·  FILL YOUR BAG (1)", { fontFamily: FONT, fontSize: "6px", color: "#f4e4c1" }).setOrigin(0.5));
+    c.add(this.add.text(0, 2, "2. PORCH TO PLANT   ·  OR ACTION TO THROW", { fontFamily: FONT, fontSize: "6px", color: "#f4e4c1" }).setOrigin(0.5));
     c.add(this.add.text(0, 18, "3. LIGHT IT   4. WALK TO THE DOOR", { fontFamily: FONT, fontSize: "6px", color: "#f4e4c1" }).setOrigin(0.5));
-    c.add(this.add.text(0, 34, "5. PRESS ACTION TO RING  THEN RUN", { fontFamily: FONT, fontSize: "6px", color: "#3ec6ff" }).setOrigin(0.5));
+    c.add(this.add.text(0, 34, "5. RING  THEN RUN  ·  EMPTY? BACK TO A BUSH", { fontFamily: FONT, fontSize: "6px", color: "#3ec6ff" }).setOrigin(0.5));
     this.howto = c;
   }
 
@@ -576,6 +587,14 @@ export class PlayScene extends Phaser.Scene {
         Math.abs(e.sprite.y - f.sprite.y) < 18,
     );
     if (nearFoe) {
+      if (f.holding && Math.abs(nearFoe.sprite.x - f.sprite.x) < 96) {
+        a.moveX = Math.sign(nearFoe.sprite.x - f.sprite.x);
+        if (Math.abs(nearFoe.sprite.x - f.sprite.x) < 86) {
+          a.action = true;
+          a.actionPressed = true;
+        }
+        return a;
+      }
       a.moveX = Math.sign(nearFoe.sprite.x - f.sprite.x);
       a.moveY = Math.sign(f.laneY - f.sprite.y) * 0.3;
       if (Math.abs(nearFoe.sprite.x - f.sprite.x) < 30) {
@@ -801,37 +820,62 @@ export class PlayScene extends Phaser.Scene {
 
   tryAction(f: Fighter, a: Actions) {
     const house = this.interactHouse(f.sprite.x);
-    if (!house) return;
     const x = f.sprite.x;
-    if (f.holding && Math.abs(x - house.bushX) < 56) {
-      if (a.actionPressed) this.pop(x, f.sprite.y - 40, "TAKE IT TO THE PORCH", "#ffd27a");
-      return;
-    }
-    if ((house.state === "ready" || house.state === "filling") && !f.holding && Math.abs(x - house.bushX) < 52) {
-      if (this.fighters.some((x) => x !== f && x.state === "fill")) return;
-      if (a.actionPressed || (a.action && f.state !== "fill")) {
-        this.setState(f, "fill");
-        house.state = "filling";
-        f.fillT = 0;
-        f.sprite.x = house.bushX + 6;
-        house.bush.play("bush-shake");
-        sfx.bag();
-        sfx.strain();
-        this.pop(house.bushX, GROUND_Y - 64, "NATURE CALLS...", "#3ec6ff");
+    if (house) {
+      if (f.holding && Math.abs(x - house.bushX) < 56 && Math.abs(x - house.porchX) >= 48) {
+        if (a.actionPressed) this.pop(x, f.sprite.y - 40, "BAG FULL  ·  PORCH OR YEET", "#ffd27a");
+        return;
       }
-      return;
+      if ((house.state === "ready" || house.state === "filling") && !f.holding && Math.abs(x - house.bushX) < 52) {
+        if (this.fighters.some((other) => other !== f && other.state === "fill")) return;
+        if (a.actionPressed || (a.action && f.state !== "fill")) {
+          this.setState(f, "fill");
+          house.state = "filling";
+          f.fillT = 0;
+          f.sprite.x = house.bushX + 6;
+          house.bush.play("bush-shake");
+          sfx.bag();
+          sfx.strain();
+          this.pop(house.bushX, GROUND_Y - 64, "NATURE CALLS...", "#3ec6ff");
+        }
+        return;
+      }
+      if (f.holding && Math.abs(x - house.porchX) < 48 && (house.state === "ready" || house.state === "filling" || house.state === "bagged")) {
+        if (a.actionPressed) this.plant(f, house);
+        return;
+      }
+      if (!f.holding && house.state === "bagged" && house.bag && Math.abs(x - house.bag.x) < 48) {
+        if (a.actionPressed) this.light(house);
+        return;
+      }
+      if (house.state === "lit" && Math.abs(x - house.doorX) < 64) {
+        if (a.actionPressed) this.ring(f, house);
+        return;
+      }
     }
-    if (f.holding && Math.abs(x - house.porchX) < 48 && (house.state === "ready" || house.state === "filling" || house.state === "bagged")) {
-      if (a.actionPressed) this.plant(f, house);
-      return;
-    }
-    if (!f.holding && house.state === "bagged" && house.bag && Math.abs(x - house.bag.x) < 48) {
-      if (a.actionPressed) this.light(house);
-      return;
-    }
-    if (house.state === "lit" && Math.abs(x - house.doorX) < 64) {
-      if (a.actionPressed) this.ring(f, house);
-    }
+    if (f.holding && a.actionPressed) this.throwBag(f);
+  }
+
+  throwBag(f: Fighter) {
+    if (!f.holding) return;
+    f.holding = false;
+    f.premium = false;
+    f.bagIcon.setVisible(false);
+    const spr = this.physics.add.sprite(f.sprite.x + f.facing * 18, f.sprite.y - 28, "bag", 0);
+    spr.setDisplaySize(28, 32);
+    spr.setDepth(80);
+    spr.play("bag-idle");
+    this.shots.push({
+      sprite: spr,
+      vx: f.facing * 220,
+      vy: -120,
+      life: 1.7,
+      dmg: 1,
+      friendly: true,
+    });
+    this.pop(f.sprite.x, f.sprite.y - 42, "YEET!", "#ff6a00");
+    sfx.bag();
+    sfx.punch();
   }
 
   stepFill(f: Fighter, _a: Actions, dt: number) {
@@ -868,7 +912,7 @@ export class PlayScene extends Phaser.Scene {
       f.premium = true;
       house.state = "ready";
       this.addScore(100);
-      this.pop(f.sprite.x, f.sprite.y - 40, "BAG READY", "#ff6a00");
+      this.pop(f.sprite.x, f.sprite.y - 40, `BAG ${BAG_SLOTS}/${BAG_SLOTS}`, "#ff6a00");
       sfx.coin();
       this.setState(f, "idle");
     }
@@ -1103,7 +1147,7 @@ export class PlayScene extends Phaser.Scene {
     if (hot) spr.setTint(0xff6a00);
     if (tex === "boot") spr.play("boot-spin");
     const dir = Math.sign(target.sprite.x - foe.sprite.x) || -1;
-    this.shots.push({ sprite: spr, vx: dir * (hot ? 170 : 140), vy: -20, life: 2.2, dmg: hot ? 2 : 1 });
+    this.shots.push({ sprite: spr, vx: dir * (hot ? 170 : 140), vy: -20, life: 2.2, dmg: hot ? 2 : 1, friendly: false });
     if (foe.kind === "clemens") this.say(foe, hot ? "YOU'RE ALL GONNA DIE!" : "MY BOOT!!");
     if (foe.kind === "veronica") this.say(foe, QUOTES.veronica[1] ?? "DISGRACE!");
     sfx.punch();
@@ -1114,13 +1158,34 @@ export class PlayScene extends Phaser.Scene {
       sh.life -= dt;
       sh.sprite.x += sh.vx * dt;
       sh.sprite.y += sh.vy * dt;
-      sh.vy += 80 * dt;
-      for (const f of this.fighters) {
-        if (f.state === "dead" || f.invuln > 0) continue;
-        if (Math.abs(f.sprite.x - sh.sprite.x) < 18 && Math.abs(f.sprite.y - 18 - sh.sprite.y) < 22) {
-          this.hurtFighter(f, sh.dmg, Math.sign(sh.vx) as 1 | -1);
-          sh.life = 0;
+      sh.vy += (sh.friendly ? 280 : 80) * dt;
+      if (sh.friendly) sh.sprite.rotation += 10 * dt * Math.sign(sh.vx || 1);
+      if (sh.friendly) {
+        for (const foe of this.foes) {
+          if (foe.state === "dead") continue;
+          if (Math.abs(foe.sprite.x - sh.sprite.x) < 22 && Math.abs(foe.sprite.y - 18 - sh.sprite.y) < 26) {
+            this.hurtFoe(foe, sh.dmg, Math.sign(sh.vx) as 1 | -1);
+            this.pop(foe.sprite.x, foe.sprite.y - 40, "SPLAT!", "#ff6a00");
+            this.addScore(75);
+            sh.life = 0;
+            this.burst(sh.sprite.x, sh.sprite.y);
+            this.stain(sh.sprite.x, GROUND_Y - 4);
+          }
+        }
+        if (sh.life > 0 && sh.sprite.y >= GROUND_Y - 8) {
+          this.pop(sh.sprite.x, sh.sprite.y - 12, "THUD", "#8b7d6a");
+          this.stain(sh.sprite.x, GROUND_Y - 4);
           this.burst(sh.sprite.x, sh.sprite.y);
+          sh.life = 0;
+        }
+      } else {
+        for (const f of this.fighters) {
+          if (f.state === "dead" || f.invuln > 0) continue;
+          if (Math.abs(f.sprite.x - sh.sprite.x) < 18 && Math.abs(f.sprite.y - 18 - sh.sprite.y) < 22) {
+            this.hurtFighter(f, sh.dmg, Math.sign(sh.vx) as 1 | -1);
+            sh.life = 0;
+            this.burst(sh.sprite.x, sh.sprite.y);
+          }
         }
       }
     }
@@ -1130,6 +1195,17 @@ export class PlayScene extends Phaser.Scene {
         return false;
       }
       return true;
+    });
+  }
+
+  stain(x: number, y: number) {
+    const blob = this.add.ellipse(x, y, 18, 8, 0x5a3a18, 0.7).setDepth(4);
+    this.tweens.add({
+      targets: blob,
+      alpha: 0,
+      scaleX: 1.4,
+      duration: 1400,
+      onComplete: () => blob.destroy(),
     });
   }
 
@@ -1388,11 +1464,21 @@ export class PlayScene extends Phaser.Scene {
       };
     }
     if (house.state === "bagged") return { text: "ACTION ON THE BAG  ·  LIGHT IT", mx: house.porchX, my: GROUND_Y - 44, label: "LIGHT" };
-    if (f.holding) return { text: "WALK TO THE PORCH  ·  ACTION TO DROP", mx: house.porchX, my: GROUND_Y - 36, label: "DROP" };
+    if (f.holding) {
+      const nearPorch = Math.abs(f.sprite.x - house.porchX) < 48;
+      const nearFoe = this.foes.some(
+        (e) => e.state !== "dead" && Math.abs(e.sprite.x - f.sprite.x) < 90 && Math.abs(e.sprite.y - f.sprite.y) < 22,
+      );
+      if (nearPorch && (house.state === "ready" || house.state === "filling")) {
+        return { text: "ACTION  ·  DROP IT ON THE PORCH", mx: house.porchX, my: GROUND_Y - 36, label: "DROP" };
+      }
+      if (nearFoe) return { text: "ACTION  ·  THROW THE BAG", mx: f.sprite.x + f.facing * 28, my: f.sprite.y - 50, label: "THROW" };
+      return { text: "PORCH TO PLANT  ·  OR ACTION TO THROW", mx: house.porchX, my: GROUND_Y - 36, label: "THROW" };
+    }
     if (house.state === "ready" || house.state === "filling") {
       const close = Math.abs(f.sprite.x - house.bushX) < 52;
       return {
-        text: close ? "PRESS ACTION  ·  SQUAT & FILL" : "GO TO THE BUSH  ·  PRESS ACTION",
+        text: close ? "PRESS ACTION  ·  SQUAT & FILL" : "EMPTY  ·  GO TO A BUSH TO RELOAD",
         mx: house.bushX,
         my: GROUND_Y - 58,
         label: close ? "FILL" : "ACTION",
@@ -1407,6 +1493,12 @@ export class PlayScene extends Phaser.Scene {
     this.fighters.forEach((f, i) => {
       const bar = this.hpBars[i];
       if (bar) bar.width = Math.max(0, 72 * (f.hp / f.maxHp));
+      const bag = this.hudBags[i];
+      if (bag) {
+        bag.setAlpha(f.holding ? 1 : 0.28);
+        if (f.holding) bag.setTint(0xff6a00);
+        else bag.clearTint();
+      }
     });
     const obj = this.objective();
     this.hudHint.setText(obj.text);
