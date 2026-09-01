@@ -10,8 +10,12 @@ let unlocked = false;
 let musicHowl: Howl | null = null;
 let musicOn = false;
 let activeLine: Howl | null = null;
+let activeSrc: string | null = null;
+let bossOn = false;
+let bossTimer: ReturnType<typeof setInterval> | null = null;
+let bossGain: GainNode | null = null;
 
-const LINES = {
+export const LINES = {
   poop: "/audio/clips/11-its-poop-again.mp3?v=clean1",
   called: "/audio/clips/12-he-called-the-shit-poop.mp3?v=clean1",
   best: "/audio/clips/13-this-is-the-best-night-of-my-life.mp3?v=clean1",
@@ -95,13 +99,21 @@ function noise(dur: number, dest: AudioNode, hp = 400) {
 
 function duckMusic(on: boolean) {
   if (!musicHowl) return;
-  musicHowl.fade(musicHowl.volume(), on ? 0.12 : 0.55, on ? 80 : 400);
+  const rest = bossOn ? 0.1 : 0.55;
+  musicHowl.fade(musicHowl.volume(), on ? Math.min(0.08, rest) : rest, on ? 80 : 400);
 }
 
-/** Play a porch line all the way through. Never chops a line that's already talking. */
-export function playLine(src: string) {
+/** Play a porch line all the way through. Pass interrupt to cut a lesser line. Same clip won't restart. */
+export function playLine(src: string, interrupt = false) {
   unlockAudio();
-  if (activeLine?.playing()) return;
+  if (activeLine?.playing()) {
+    if (activeSrc === src) return;
+    if (!interrupt) return;
+    activeLine.stop();
+    activeLine.unload();
+    activeLine = null;
+    activeSrc = null;
+  }
   const howl = new Howl({
     src: [src],
     html5: true,
@@ -109,10 +121,12 @@ export function playLine(src: string) {
     preload: true,
   });
   activeLine = howl;
+  activeSrc = src;
   duckMusic(true);
   howl.once("end", () => {
     if (activeLine === howl) {
       activeLine = null;
+      activeSrc = null;
       duckMusic(false);
     }
     howl.unload();
@@ -156,7 +170,17 @@ export const sfx = {
   yell() {
     if (!bus) return;
     beep(320, "sawtooth", 0.18, bus.sfx, 180);
-    playLine(LINES.die);
+  },
+  clemensDie() {
+    if (bus) {
+      beep(320, "sawtooth", 0.18, bus.sfx, 180);
+      noise(0.2, bus.sfx, 220);
+    }
+    playLine(LINES.die, true);
+  },
+  clemensSpawn() {
+    if (bus) beep(90, "sawtooth", 0.22, bus.sfx, 50);
+    playLine(LINES.kids, true);
   },
   bag() {
     if (!bus) return;
@@ -178,12 +202,63 @@ export const sfx = {
     beep(784, "square", 0.1, bus.sfx);
   },
   win() {
-    playLine(LINES.poop);
+    if (!bus) return;
+    [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => bus && beep(f, "square", 0.1, bus.sfx), i * 80));
+  },
+  victory() {
+    playLine(LINES.poop, true);
   },
   lose() {
     playLine(LINES.kids);
   },
 };
+
+export function startBossMusic() {
+  unlockAudio();
+  if (bossOn) return;
+  bossOn = true;
+  if (musicHowl) {
+    musicHowl.rate(1.18);
+    musicHowl.fade(musicHowl.volume(), 0.1, 350);
+  }
+  const c = ensure();
+  if (!bus) return;
+  bossGain = c.createGain();
+  bossGain.gain.value = 0.32;
+  bossGain.connect(bus.music);
+  const dest = bossGain;
+  const pulse = () => {
+    if (!bossOn || !dest) return;
+    beep(52, "square", 0.14, dest, 30);
+    beep(78, "sawtooth", 0.2, dest, 40);
+    window.setTimeout(() => {
+      if (!bossOn || !dest) return;
+      beep(311, "square", 0.07, dest);
+    }, 140);
+    window.setTimeout(() => {
+      if (!bossOn || !dest) return;
+      beep(207, "square", 0.08, dest, 160);
+    }, 280);
+  };
+  pulse();
+  bossTimer = setInterval(pulse, 460);
+}
+
+export function stopBossMusic() {
+  bossOn = false;
+  if (bossTimer) {
+    clearInterval(bossTimer);
+    bossTimer = null;
+  }
+  if (bossGain && ctx) {
+    bossGain.gain.setTargetAtTime(0, ctx.currentTime, 0.04);
+  }
+  bossGain = null;
+  if (musicHowl && musicOn) {
+    musicHowl.rate(1);
+    musicHowl.fade(musicHowl.volume(), 0.55, 500);
+  }
+}
 
 export function startMusic() {
   unlockAudio();
@@ -202,6 +277,7 @@ export function startMusic() {
 
 export function stopMusic() {
   musicOn = false;
+  stopBossMusic();
   musicHowl?.fade(musicHowl.volume(), 0, 300);
   setTimeout(() => {
     if (!musicOn) musicHowl?.pause();

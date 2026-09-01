@@ -5,6 +5,7 @@ import {
   CHARACTERS,
   GROUND_Y,
   H,
+  LINE_FILES,
   QUOTES,
   STAGES,
   TILE,
@@ -13,12 +14,15 @@ import {
   WALK_BOT,
   WALK_TOP,
   WORLD_W,
+  clemensIntroBeats,
+  houseClearBeats,
   type CharId,
+  type CutBeat,
   type OwnerId,
   type RosterSlot,
 } from "../config";
 import { actions, setInjectedKeys, updateInput, type Actions } from "../input";
-import { sfx, startMusic, stopMusic, unlockAudio } from "../audio";
+import { playLine, sfx, startBossMusic, startMusic, stopBossMusic, stopMusic, unlockAudio } from "../audio";
 import { loadSave, submitScore } from "../save";
 import { bridge } from "../bridge";
 import { net, type FoeSnap, type HouseSnap, type NetInput } from "../net";
@@ -122,6 +126,13 @@ export class PlayScene extends Phaser.Scene {
   marker!: Phaser.GameObjects.Text;
   overlay?: Phaser.GameObjects.Container;
   howto?: Phaser.GameObjects.Container;
+  cutBox?: Phaser.GameObjects.Container;
+  cutBeats: CutBeat[] = [];
+  cutI = 0;
+  cutHold = 0;
+  cutLock = 0;
+  cutDone: (() => void) | null = null;
+  bossIntro = false;
   lead!: Fighter;
   trauma = 0;
   howtoT = 0;
@@ -181,6 +192,13 @@ export class PlayScene extends Phaser.Scene {
     this.hudBags = [];
     this.overlay = undefined;
     this.howto = undefined;
+    this.cutBox = undefined;
+    this.cutBeats = [];
+    this.cutI = 0;
+    this.cutHold = 0;
+    this.cutLock = 0;
+    this.cutDone = null;
+    this.bossIntro = false;
   }
 
   create() {
@@ -234,6 +252,8 @@ export class PlayScene extends Phaser.Scene {
       this.fighters = [];
       this.foes = [];
       this.shots = [];
+      this.endCut(false);
+      stopBossMusic();
       net.setGameHooks(null);
       bridge.setActionLabel("ACTION");
     });
@@ -442,6 +462,62 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
+  inCut() {
+    return !!this.cutBox;
+  }
+
+  startCut(beats: CutBeat[], done?: () => void) {
+    if (!beats.length) {
+      done?.();
+      return;
+    }
+    this.endCut(false);
+    this.cutBeats = beats;
+    this.cutI = 0;
+    this.cutDone = done ?? null;
+    for (const f of this.fighters) (f.sprite.body as Phaser.Physics.Arcade.Body | undefined)?.setVelocity(0, 0);
+    for (const e of this.foes) (e.sprite.body as Phaser.Physics.Arcade.Body | undefined)?.setVelocity(0, 0);
+    this.showCutBeat();
+  }
+
+  showCutBeat() {
+    const beat = this.cutBeats[this.cutI];
+    if (!beat) {
+      this.endCut(true);
+      return;
+    }
+    this.cutBox?.destroy();
+    const box = this.add.container(W / 2, 118).setScrollFactor(0).setDepth(2400);
+    box.add(this.add.rectangle(0, 0, 440, 100, 0x070b14, 0.94).setStrokeStyle(3, 0xff6a00));
+    box.add(this.add.text(0, -32, beat.who, { fontFamily: FONT, fontSize: "8px", color: beat.color }).setOrigin(0.5));
+    box.add(
+      this.add
+        .text(0, 4, beat.text, { fontFamily: FONT, fontSize: "7px", color: "#f4e4c1", align: "center", wordWrap: { width: 400 } })
+        .setOrigin(0.5),
+    );
+    box.add(this.add.text(0, 38, "ACTION  ·  NEXT", { fontFamily: FONT, fontSize: "5px", color: "#8b7d6a" }).setOrigin(0.5));
+    this.cutBox = box;
+    this.cutHold = beat.clip ? 3.4 : 2.4;
+    this.cutLock = 0.2;
+    if (beat.clip) playLine(LINE_FILES[beat.clip], true);
+    bridge.setActionLabel("NEXT");
+  }
+
+  advanceCut() {
+    this.cutI += 1;
+    this.showCutBeat();
+  }
+
+  endCut(runDone: boolean) {
+    this.cutBox?.destroy();
+    this.cutBox = undefined;
+    this.cutBeats = [];
+    this.cutI = 0;
+    const done = this.cutDone;
+    this.cutDone = null;
+    if (runDone) done?.();
+  }
+
   wireControlsTest() {
     const self = this;
     (window as unknown as { __controlsTest: unknown }).__controlsTest = {
@@ -501,6 +577,24 @@ export class PlayScene extends Phaser.Scene {
         this.howto.destroy();
         this.howto = undefined;
       }
+    }
+    if (this.inCut()) {
+      this.cutHold -= dt;
+      this.cutLock = Math.max(0, this.cutLock - dt);
+      if (this.cutLock <= 0 && (this.cutHold <= 0 || actions[0]!.actionPressed || actions[0]!.punchPressed)) {
+        this.advanceCut();
+      }
+      return;
+    }
+    if (
+      !this.howto &&
+      !this.bossIntro &&
+      !this.staging &&
+      this.currentHouse()?.owner === "clemens"
+    ) {
+      this.bossIntro = true;
+      this.startCut(clemensIntroBeats(this.stage));
+      return;
     }
     this.comboT -= dt;
     if (this.comboT <= 0) this.combo = 0;
@@ -1009,8 +1103,14 @@ export class PlayScene extends Phaser.Scene {
     };
     this.foes.push(foe);
     this.say(foe, QUOTES[kind]?.[0] ?? "HEY!");
-    sfx.yell();
-    this.banner(house.title, "LOOK OUT!");
+    if (kind === "clemens") {
+      startBossMusic();
+      sfx.clemensSpawn();
+      this.banner("OLD MAN CLEMENS", "YOU'RE ALL GONNA DIE!");
+    } else {
+      sfx.yell();
+      this.banner(house.title, "LOOK OUT!");
+    }
   }
 
   stepFoe(foe: Foe, dt: number) {
@@ -1124,7 +1224,8 @@ export class PlayScene extends Phaser.Scene {
     house.bag = null;
     foe.yelled = true;
     if (foe.kind === "clemens") foe.hot = true;
-    sfx.yell();
+    if (foe.kind === "clemens") sfx.clemensDie();
+    else sfx.yell();
     this.say(foe, foe.kind === "clemens" ? "YOU'RE ALL GONNA DIE!" : (QUOTES[foe.kind]?.[0] ?? "ARGH!"));
     this.addScore(150);
     this.pop(foe.sprite.x, foe.sprite.y - 36, foe.kind === "clemens" ? "MY BOOT!!" : "STOMPED", "#ff6a00");
@@ -1151,9 +1252,13 @@ export class PlayScene extends Phaser.Scene {
     if (tex === "boot") spr.play("boot-spin");
     const dir = Math.sign(target.sprite.x - foe.sprite.x) || -1;
     this.shots.push({ sprite: spr, vx: dir * (hot ? 170 : 140), vy: -20, life: 2.2, dmg: 1, friendly: false });
-    if (foe.kind === "clemens") this.say(foe, hot ? "YOU'RE ALL GONNA DIE!" : "MY BOOT!!");
-    if (foe.kind === "veronica") this.say(foe, QUOTES.veronica[1] ?? "DISGRACE!");
-    sfx.punch();
+    if (foe.kind === "clemens") {
+      this.say(foe, "YOU'RE ALL GONNA DIE!");
+      sfx.clemensDie();
+    } else if (foe.kind === "veronica") {
+      this.say(foe, QUOTES.veronica[1] ?? "DISGRACE!");
+      sfx.punch();
+    } else sfx.punch();
   }
 
   stepShots(dt: number) {
@@ -1221,8 +1326,8 @@ export class PlayScene extends Phaser.Scene {
           h.state = "cleared";
           h.ringHint.setVisible(false);
           this.addScore(400);
-          this.banner(h.title, "HOUSE CLEARED");
-          sfx.win();
+          if (h.owner === "clemens") stopBossMusic();
+          this.startCut(houseClearBeats(this.stage, h.i, h.owner, h.title));
         }
       }
     }
@@ -1412,6 +1517,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   checkEnd() {
+    if (this.inCut() || this.howto) return;
     if (this.houses.every((h) => h.state === "cleared") && !this.over && !this.staging) {
       if (this.stage < STAGES.length - 1) this.advanceStage();
       else {
@@ -1493,10 +1599,16 @@ export class PlayScene extends Phaser.Scene {
       }
     });
     const obj = this.objective();
-    this.hudHint.setText(obj.text);
-    this.marker.setPosition(obj.mx, obj.my + Math.sin(this.time.now / 180) * 3);
-    this.marker.setVisible(!this.howto);
-    bridge.setActionLabel(obj.label);
+    if (this.inCut()) {
+      this.hudHint.setText("ACTION  ·  SKIP");
+      this.marker.setVisible(false);
+      bridge.setActionLabel("NEXT");
+    } else {
+      this.hudHint.setText(obj.text);
+      this.marker.setPosition(obj.mx, obj.my + Math.sin(this.time.now / 180) * 3);
+      this.marker.setVisible(!this.howto);
+      bridge.setActionLabel(obj.label);
+    }
     if (this.trauma > 0.02 && loadSave().settings.shake) {
       const mag = this.trauma * this.trauma * 3;
       this.cameras.main.setScroll(
@@ -1739,18 +1851,20 @@ export class PlayScene extends Phaser.Scene {
   }
 
   showWin() {
-    sfx.win();
+    sfx.victory();
     const c = this.add.container(W / 2, H / 2).setScrollFactor(0).setDepth(3000);
-    c.add(this.add.rectangle(0, 0, W, H, 0x070b14, 0.78));
-    c.add(this.add.text(0, -50, "YOU WIN", { fontFamily: FONT, fontSize: "14px", color: "#ff6a00" }).setOrigin(0.5));
-    c.add(this.add.text(0, -24, "CLEMENS ATE THE BOOT", { fontFamily: FONT, fontSize: "7px", color: "#f4e4c1" }).setOrigin(0.5));
+    c.add(this.add.rectangle(0, 0, W, H, 0x070b14, 0.82));
+    c.add(this.add.text(0, -58, "YOU WIN", { fontFamily: FONT, fontSize: "14px", color: "#ff6a00" }).setOrigin(0.5));
+    c.add(this.add.text(0, -34, "DANNY TOOK THE SHOT", { fontFamily: FONT, fontSize: "7px", color: "#c4b4ff" }).setOrigin(0.5));
+    c.add(this.add.text(0, -18, "CLEMENS ATE THE BOOT", { fontFamily: FONT, fontSize: "6px", color: "#f4e4c1" }).setOrigin(0.5));
     c.add(
       this.add
-        .text(0, 4, `SCORE ${String(this.score).padStart(6, "0")}`, { fontFamily: FONT, fontSize: "10px", color: "#3ec6ff" })
+        .text(0, 8, `SCORE ${String(this.score).padStart(6, "0")}`, { fontFamily: FONT, fontSize: "10px", color: "#3ec6ff" })
         .setOrigin(0.5),
     );
     c.add(this.add.text(0, 32, "YOU'RE ALL GONNA... WIN!", { fontFamily: FONT, fontSize: "6px", color: "#8b7d6a" }).setOrigin(0.5));
-    c.add(this.add.text(0, 56, "TAP TO RETURN", { fontFamily: FONT, fontSize: "7px", color: "#f4e4c1" }).setOrigin(0.5));
+    c.add(this.add.text(0, 52, "BEST NIGHT OF MY LIFE", { fontFamily: FONT, fontSize: "6px", color: "#7ec8a3" }).setOrigin(0.5));
+    c.add(this.add.text(0, 74, "TAP TO RETURN", { fontFamily: FONT, fontSize: "7px", color: "#f4e4c1" }).setOrigin(0.5));
     submitScore(this.score, loadSave().initials);
     this.input.once("pointerdown", () => this.scene.start("attract"));
     this.input.keyboard?.once("keydown-ENTER", () => this.scene.start("attract"));

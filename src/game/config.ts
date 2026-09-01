@@ -141,3 +141,91 @@ export const QUOTES: Record<string, string[]> = {
   frank: ["CLASSIC.", "RING AND RUN, BABY.", "NICE FORM."],
   jack: ["OHHH YEAH!", "THAT'S THE STUFF!", "COME GET SOME!"],
 };
+
+export type CutBeat = {
+  who: string;
+  text: string;
+  color: string;
+  clip?: "poop" | "called" | "best" | "kids" | "die" | "hell" | "stomp" | "shh" | "wait" | "nice";
+};
+
+export const LINE_FILES: Record<NonNullable<CutBeat["clip"]>, string> = {
+  poop: "/audio/clips/11-its-poop-again.mp3?v=clean1",
+  called: "/audio/clips/12-he-called-the-shit-poop.mp3?v=clean1",
+  best: "/audio/clips/13-this-is-the-best-night-of-my-life.mp3?v=clean1",
+  kids: "/audio/clips/16-ill-get-you-damn-kids-youre-all-gonna-die.mp3?v=clean1",
+  die: "/audio/clips/15-youre-all-gonna-die.mp3?v=clean1",
+  hell: "/audio/clips/06-who-the-hell-is-it-what-do-you-want.mp3?v=clean1",
+  stomp: "/audio/clips/10-call-the-fire-department-outta-control.mp3?v=clean1",
+  shh: "/audio/clips/05-shh-here-he-comes.mp3?v=clean1",
+  wait: "/audio/clips/02-wait-till-old-man-clemens-realizes-its-shit.mp3?v=clean1",
+  nice: "/audio/clips/01-heres-a-nice-piece-of-shit.mp3?v=clean1",
+};
+
+export function houseClearBeats(stage: number, houseI: number, owner: OwnerId, title: string): CutBeat[] {
+  if (owner === "clemens") {
+    return stage === 0
+      ? [
+          { who: "BILLY", text: "WHO'S THE MAN?!", color: "#3ec6ff" },
+          { who: "FRANK", text: "WESTPORT'S DONE.  FAIRWAY NEXT.", color: "#7ec8a3" },
+        ]
+      : [
+          { who: "DANNY", text: "HEH HEH HEH...  GOT HIM.", color: "#c4b4ff" },
+          { who: "BILLY", text: "NICE SHOT, DANNY.", color: "#3ec6ff" },
+          { who: "FRANK", text: "BEST NIGHT OF MY LIFE.", color: "#7ec8a3", clip: "best" },
+        ];
+  }
+  const table: CutBeat[][][] = [
+    [
+      [
+        { who: "FRANK", text: "CLASSIC.  RING AND RUN, BABY.", color: "#7ec8a3" },
+        { who: "BILLY", text: "TOO EASY!", color: "#3ec6ff" },
+      ],
+      [
+        { who: "JACK", text: "OHHH YEAH!  THAT'S THE STUFF!", color: "#e8b14a" },
+        { who: "FRANK", text: "NICE FORM.", color: "#7ec8a3" },
+      ],
+      [
+        { who: "BILLY", text: "THAT WAS OUR TEACHER...", color: "#3ec6ff" },
+        { who: "FRANK", text: "IQ OF A FENCE POST.  YOURS.", color: "#7ec8a3" },
+      ],
+      [
+        { who: "DANNY", text: "I LIVE IN A DUMPSTER!", color: "#c4b4ff" },
+        { who: "BILLY", text: "HEY DANNY...  SORRY ABOUT HIGH SCHOOL.", color: "#3ec6ff" },
+      ],
+    ],
+    [
+      [
+        { who: "FRANK", text: "GRANDMA NEVER SAW IT COMING.", color: "#7ec8a3" },
+        { who: "JACK", text: "COME GET SOME!", color: "#e8b14a" },
+      ],
+      [
+        { who: "BILLY", text: "FORE!", color: "#3ec6ff" },
+        { who: "FRANK", text: "KEEP THE BAGS COMING.", color: "#7ec8a3" },
+      ],
+      [
+        { who: "BILLY", text: "COUNTRY CLUB'S GONNA HATE US.", color: "#3ec6ff" },
+        { who: "JACK", text: "THAT'S THE STUFF!", color: "#e8b14a" },
+      ],
+      [
+        { who: "FRANK", text: "MAMA BOUCHER'S GONNA LOSE IT.", color: "#7ec8a3" },
+        { who: "BILLY", text: "ONE MORE HOUSE.", color: "#3ec6ff" },
+      ],
+    ],
+  ];
+  return table[stage]?.[houseI] ?? [{ who: "BILLY", text: `${title}  ·  CLEARED`, color: "#3ec6ff" }];
+}
+
+export function clemensIntroBeats(stage: number): CutBeat[] {
+  return stage === 0
+    ? [
+        { who: "BILLY", text: "HERE'S A NICE PIECE OF SHIT.", color: "#3ec6ff", clip: "nice" },
+        { who: "FRANK", text: "WAIT TILL OLD MAN CLEMENS REALIZES...", color: "#7ec8a3", clip: "wait" },
+        { who: "JACK", text: "SHH.  HERE HE COMES.", color: "#e8b14a", clip: "shh" },
+      ]
+    : [
+        { who: "FRANK", text: "HE'S BACK.  AND HE'S MAD.", color: "#7ec8a3" },
+        { who: "BILLY", text: "GOOD.  I LIKE HIM MAD.", color: "#3ec6ff" },
+        { who: "JACK", text: "SHH.  HERE HE COMES.", color: "#e8b14a", clip: "shh" },
+      ];
+}
