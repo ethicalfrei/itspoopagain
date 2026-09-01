@@ -669,6 +669,9 @@ export class PlayScene extends Phaser.Scene {
     f.stateT += dt;
     f.invuln = Math.max(0, f.invuln - dt);
     f.specialCd = Math.max(0, f.specialCd - dt);
+    if (f.state !== "hurt" && f.state !== "dead" && f.hp < f.maxHp) {
+      f.hp = Math.min(f.maxHp, f.hp + dt * 0.9);
+    }
     const a = this.actFor(f);
     const spr = f.sprite;
     const body = spr.body as Phaser.Physics.Arcade.Body;
@@ -676,8 +679,8 @@ export class PlayScene extends Phaser.Scene {
 
     if (f.state === "dead") {
       body.setVelocity(0, 0);
-      spr.setAlpha(0.3);
-      if (f.human && f.lives > 0 && f.stateT > 1.4) this.respawn(f);
+      spr.setAlpha(1);
+      if (f.stateT > 0.6) this.respawn(f);
       return;
     }
     if (f.state === "hurt") {
@@ -977,19 +980,19 @@ export class PlayScene extends Phaser.Scene {
     const hp =
       kind === "clemens"
         ? this.stage === 0
-          ? 22
-          : 30
+          ? 10
+          : 14
         : kind === "veronica"
           ? this.stage === 0
-            ? 14
-            : 18
+            ? 7
+            : 9
           : kind === "danny"
             ? this.stage === 0
-              ? 16
-              : 20
+              ? 8
+              : 10
             : this.stage === 0
-              ? 12
-              : 16;
+              ? 6
+              : 8;
     const foe: Foe = {
       kind,
       sprite: spr,
@@ -1147,7 +1150,7 @@ export class PlayScene extends Phaser.Scene {
     if (hot) spr.setTint(0xff6a00);
     if (tex === "boot") spr.play("boot-spin");
     const dir = Math.sign(target.sprite.x - foe.sprite.x) || -1;
-    this.shots.push({ sprite: spr, vx: dir * (hot ? 170 : 140), vy: -20, life: 2.2, dmg: hot ? 2 : 1, friendly: false });
+    this.shots.push({ sprite: spr, vx: dir * (hot ? 170 : 140), vy: -20, life: 2.2, dmg: 1, friendly: false });
     if (foe.kind === "clemens") this.say(foe, hot ? "YOU'RE ALL GONNA DIE!" : "MY BOOT!!");
     if (foe.kind === "veronica") this.say(foe, QUOTES.veronica[1] ?? "DISGRACE!");
     sfx.punch();
@@ -1247,21 +1250,16 @@ export class PlayScene extends Phaser.Scene {
 
   hurtFighter(f: Fighter, dmg: number, dir: 1 | -1) {
     if (f.invuln > 0 || f.state === "dead") return;
-    f.hp -= dmg;
-    f.invuln = 0.8;
+    f.hp = Math.max(1, f.hp - dmg);
+    f.invuln = 1.15;
     this.setState(f, "hurt");
-    (f.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(dir * 140, 0);
+    (f.sprite.body as Phaser.Physics.Arcade.Body).setVelocity(dir * 160, 0);
     f.sprite.setTint(0xff6666);
     this.time.delayedCall(120, () => f.sprite.clearTint());
     this.combo = 0;
     sfx.hurt();
     this.cameras.main.shake(120, 0.008);
-    if (f.hp <= 0) {
-      f.lives -= 1;
-      f.hp = 0;
-      this.setState(f, "dead");
-      this.pop(f.sprite.x, f.sprite.y - 28, "DOWN", "#e23b3b");
-    }
+    this.pop(f.sprite.x, f.sprite.y - 28, "OOF", "#e23b3b");
   }
 
   respawn(f: Fighter) {
@@ -1397,8 +1395,8 @@ export class PlayScene extends Phaser.Scene {
       this.foes.push({
         kind: "penguin",
         sprite: spr,
-        hp: 8,
-        maxHp: 8,
+        hp: 5,
+        maxHp: 5,
         facing: 1,
         state: "walk",
         stateT: 0,
@@ -1414,12 +1412,6 @@ export class PlayScene extends Phaser.Scene {
   }
 
   checkEnd() {
-    const humansDead = this.fighters.filter((f) => f.human).every((f) => f.state === "dead" && f.lives <= 0);
-    if (humansDead && !this.over) {
-      this.over = true;
-      this.continueT = 0;
-      this.showContinue();
-    }
     if (this.houses.every((h) => h.state === "cleared") && !this.over && !this.staging) {
       if (this.stage < STAGES.length - 1) this.advanceStage();
       else {

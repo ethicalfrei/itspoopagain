@@ -8,4 +8,4 @@ Play: [kevinfrei.com/itspoopagain](https://kevinfrei.com/itspoopagain)
 - Fill a bag at the bush (you carry 1). Plant it on the porch, or throw it at a foe.
 - Empty? Back to a bush to reload. Light, ring, run.
 - Old Man Clemens stomps the bag and throws the boot
-- Two stages: Westport Lane → Fairway Estates
+- You can't die — boots knock you around, HP comes back. Clear both streets.
